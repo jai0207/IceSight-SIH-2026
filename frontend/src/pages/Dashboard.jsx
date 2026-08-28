@@ -1,4 +1,4 @@
-import KpiCard from "../components/kpicard.jsx";
+import KpiCard from "../components/KpiCard.jsx";
 
 const kpis = [
   { label: "Sea Ice Coverage", value: "78.2%", color: "#22d3ee", trend: "+2.1%" },

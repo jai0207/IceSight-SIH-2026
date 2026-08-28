@@ -1,10 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-
-import Layout from "./components/Layout";
-import Dashboard from "./pages/Dashboard";
-import MapPage from "./pages/MapPage";
-import Analytics from "./pages/Analytics";
-import Alerts from "./pages/Alerts";
+import Layout from "./components/Layout.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
+import MapPage from "./pages/MapPage.jsx";
+import Analytics from "./pages/Analytics.jsx";
+import Alerts from "./pages/Alerts.jsx";
 
 function App() {
   return (
@@ -14,7 +13,7 @@ function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/map" element={<MapPage />} />
-          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/Analytics" element={<Analytics />} />
           <Route path="/alerts" element={<Alerts />} />
         </Routes>
       </Layout>
