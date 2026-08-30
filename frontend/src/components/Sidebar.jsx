@@ -3,7 +3,8 @@ import { NavLink } from "react-router-dom";
 const navItems = [
   { label: "Dashboard", icon: "❄️", path: "/dashboard" },
   { label: "Antarctica Map", icon: "🌍", path: "/map" },
-  { label: "Analytics", icon: "📊", path: "/Analytics" },
+  { label: "Mission Intel", icon: "🛰️", path: "/mission-intelligence" }, // NEW
+  { label: "Analytics", icon: "📊", path: "/analytics" }, // FIXED (lowercase a)
   { label: "Alerts", icon: "🚨", path: "/alerts" },
   { label: "Settings", icon: "⚙️", path: "/settings" },
 ];
