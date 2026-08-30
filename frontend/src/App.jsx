@@ -4,6 +4,8 @@ import Dashboard from "./pages/Dashboard.jsx";
 import MapPage from "./pages/MapPage.jsx";
 import Analytics from "./pages/Analytics.jsx";
 import Alerts from "./pages/Alerts.jsx";
+import MissionIntel from "./pages/MissionIntel.jsx";
+
 
 function App() {
   return (
@@ -15,6 +17,7 @@ function App() {
           <Route path="/map" element={<MapPage />} />
           <Route path="/Analytics" element={<Analytics />} />
           <Route path="/alerts" element={<Alerts />} />
+          <Route path="/mission-intelligence" element={<MissionIntel />} />
         </Routes>
       </Layout>
     </BrowserRouter>
