@@ -5,6 +5,7 @@ import MapPage from "./pages/MapPage.jsx";
 import Analytics from "./pages/Analytics.jsx";
 import Alerts from "./pages/Alerts.jsx";
 import MissionIntel from "./pages/MissionIntel.jsx";
+import Settings from "./pages/Settings.jsx";
 
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
           <Route path="/Analytics" element={<Analytics />} />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/mission-intelligence" element={<MissionIntel />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </Layout>
     </BrowserRouter>
