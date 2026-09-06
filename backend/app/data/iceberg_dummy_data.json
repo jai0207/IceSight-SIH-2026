@@ -1,0 +1,54 @@
+{
+    "icebergs": [
+        {
+            "id": "ICE001",
+            "latitude": -65.4,
+            "longitude": 45.2,
+            "date": "2026-09-01",
+            "speed_kmh": 0.42,
+            "direction_deg": 118.5,
+            "length_km": 2.8,
+            "width_km": 1.6
+        },
+        {
+            "id": "ICE002",
+            "latitude": -66.1,
+            "longitude": 47.8,
+            "date": "2026-09-01",
+            "speed_kmh": 0.31,
+            "direction_deg": 92.0,
+            "length_km": 4.2,
+            "width_km": 2.1
+        },
+        {
+            "id": "ICE003",
+            "latitude": -64.75,
+            "longitude": 42.6,
+            "date": "2026-09-02",
+            "speed_kmh": 0.55,
+            "direction_deg": 135.0,
+            "length_km": 1.9,
+            "width_km": 1.2
+        },
+        {
+            "id": "ICE004",
+            "latitude": -67.25,
+            "longitude": 51.4,
+            "date": "2026-09-02",
+            "speed_kmh": 0.27,
+            "direction_deg": 76.5,
+            "length_km": 5.1,
+            "width_km": 2.7
+        },
+        {
+            "id": "ICE005",
+            "latitude": -63.9,
+            "longitude": 39.75,
+            "date": "2026-09-03",
+            "speed_kmh": 0.63,
+            "direction_deg": 150.0,
+            "length_km": 2.3,
+            "width_km": 1.4
+        }
+    ]
+}
