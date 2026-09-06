@@ -1,6 +1,20 @@
 from fastapi import FastAPI
-from app.routes import iceberg, sea_ice, navigation, weather
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.database.database import Base, engine
+from app.routes import iceberg, sea_ice, navigation, weather
+from app.models import (
+    weather as weather_model,
+    iceberg as iceberg_model,
+    sea_ice as sea_ice_model,
+    trajectory as trajectory_model,
+    route_recommendation as route_model,
+)
+from app.routes import iceberg, sea_ice, navigation, weather, risk
+from app.routes import iceberg, sea_ice, navigation, weather, risk, ai
+Base.metadata.create_all(bind=engine)
+
+
 
 app = FastAPI(
     title="Antarctic Navigation Decision Support API",
@@ -20,6 +34,8 @@ app.include_router(iceberg.router)
 app.include_router(sea_ice.router)
 app.include_router(navigation.router)
 app.include_router(weather.router)
+app.include_router(risk.router)
+app.include_router(ai.router)
 
 
 @app.get("/")

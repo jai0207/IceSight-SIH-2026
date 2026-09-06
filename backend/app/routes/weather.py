@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database.database import SessionLocal
 from app.models.weather import Weather
+from services.weather_service import fetch_weather
 
 router = APIRouter()
 
@@ -16,22 +17,21 @@ def get_db():
 
 
 @router.get("/weather")
-def get_weather(db: Session = Depends(get_db)):
+def get_weather(lat: float, lon: float, db: Session = Depends(get_db)):
+    data = fetch_weather(lat, lon)
 
-    weather = db.query(Weather).order_by(
-        Weather.updated_at.desc()
-    ).first()
+    weather = Weather(
+        latitude=lat,
+        longitude=lon,
+        temperature_c=data["temperature_c"],
+        wind_speed_kmh=data["wind_speed_kmh"],
+        visibility_km=data["visibility_km"],
+        ocean_current_kmh=0,
+        wave_height_m=0,
+    )
 
-    if not weather:
-        return {
-            "message": "Weather data not found"
-        }
+    db.add(weather)
+    db.commit()
+    db.refresh(weather)
 
-    return {
-        "temperature_c": weather.temperature_c,
-        "wind_speed_kmh": weather.wind_speed_kmh,
-        "visibility_km": weather.visibility_km,
-        "ocean_current_kmh": weather.ocean_current_kmh,
-        "wave_height_m": weather.wave_height_m,
-        "updated_at": weather.updated_at
-    }
+    return data
