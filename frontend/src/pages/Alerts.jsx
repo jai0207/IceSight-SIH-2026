@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 
 /* ---------------------------------------------------------
+   Backend config
+--------------------------------------------------------- */
+
+const API_BASE = "http://127.0.0.1:8000";
+
+// Fixed demo location for AI prediction
+const DEMO_LAT = -70.767;
+const DEMO_LON = 11.7315;
+
+/* ---------------------------------------------------------
    Mock data
 --------------------------------------------------------- */
 
@@ -239,6 +249,11 @@ function Alerts() {
   const [mounted, setMounted] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
 
+  // Live AI prediction state
+  const [aiPrediction, setAiPrediction] = useState(null);
+  const [aiLoading, setAiLoading] = useState(true);
+  const [aiError, setAiError] = useState(null);
+
   useEffect(() => {
     const tick = () => setUtcTime(new Date().toISOString().slice(11, 19) + " UTC");
     tick();
@@ -249,6 +264,46 @@ function Alerts() {
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
+  }, []);
+
+  // Fetch live AI prediction once on mount and surface it as the top alert.
+  // Backend only returns { ai_prediction: "<text>" } (see API contract) —
+  // no severity, confidence, iceberg id, or region — so those fields on the
+  // synthesized alert are placeholders that preserve the existing card shape
+  // without claiming the backend provided them.
+  useEffect(() => {
+    setAiLoading(true);
+    setAiError(null);
+    fetch(`${API_BASE}/ai/predict?lat=${DEMO_LAT}&lon=${DEMO_LON}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => {
+        setAiPrediction(json.ai_prediction);
+        const liveAlert = {
+          id: "AL-LIVE",
+          severity: "Medium",
+          title: json.ai_prediction || "AI prediction received from mission engine.",
+          iceberg: "—",
+          region: "Live Analysis",
+          time: new Date().toISOString().slice(11, 19) + " UTC",
+          desc: json.ai_prediction || "AI-generated situational prediction based on current satellite and weather data.",
+          confidence: undefined,
+          status: "New",
+          source: "AI Prediction Engine",
+          drift: "N/A",
+          radius: "N/A",
+          collision: undefined,
+          action: json.ai_prediction || "Review live AI prediction for this region.",
+        };
+        setAlerts((prev) => [liveAlert, ...prev.filter((a) => a.id !== "AL-LIVE")]);
+      })
+      .catch((err) => {
+        setAiError(err.message || "AI prediction unavailable.");
+        console.error("ai/predict fetch failed:", err);
+      })
+      .finally(() => setAiLoading(false));
   }, []);
 
   const summary = useMemo(() => {
@@ -340,6 +395,12 @@ function Alerts() {
           <span className="text-xs font-mono text-slate-400 tabular-nums">
             {utcTime}
           </span>
+          {aiLoading && (
+            <span className="text-[10px] text-cyan-300">Fetching AI prediction…</span>
+          )}
+          {!aiLoading && aiError && (
+            <span className="text-[10px] text-red-400">AI prediction unavailable</span>
+          )}
         </div>
       </div>
 
@@ -450,6 +511,11 @@ function Alerts() {
                         >
                           {alert.status.toUpperCase()}
                         </span>
+                        {alert.id === "AL-LIVE" && (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold border text-cyan-300 border-cyan-400/30 bg-cyan-400/10">
+                            LIVE
+                          </span>
+                        )}
                       </div>
                       <span className="text-xs text-slate-500 font-mono">{alert.time}</span>
                     </div>
@@ -461,7 +527,9 @@ function Alerts() {
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
                       <span>Iceberg: {alert.iceberg}</span>
                       <span>Region: {alert.region}</span>
-                      <span>AI Confidence: {alert.confidence}%</span>
+                      <span>
+                        AI Confidence: {alert.confidence !== undefined ? `${alert.confidence}%` : "N/A"}
+                      </span>
                     </div>
 
                     <p className="text-xs text-slate-500 leading-relaxed">{alert.desc}</p>
@@ -478,7 +546,9 @@ function Alerts() {
                         <span>Satellite Source: {alert.source}</span>
                         <span>Estimated Drift Direction: {alert.drift}</span>
                         <span>Risk Radius: {alert.radius}</span>
-                        <span>Collision Probability: {alert.collision}%</span>
+                        <span>
+                          Collision Probability: {alert.collision !== undefined ? `${alert.collision}%` : "N/A"}
+                        </span>
                         <span className="text-slate-200 font-medium mt-1">
                           Suggested Action: {alert.action}
                         </span>
@@ -526,9 +596,15 @@ function Alerts() {
             </div>
 
             <p className="text-sm text-slate-200 leading-relaxed">
-              Immediate route adjustment recommended for the{" "}
-              <span className="text-cyan-300 font-semibold">Ross Sea Corridor</span> to
-              avoid escalating iceberg risk.
+              {aiPrediction ? (
+                aiPrediction
+              ) : (
+                <>
+                  Immediate route adjustment recommended for the{" "}
+                  <span className="text-cyan-300 font-semibold">Ross Sea Corridor</span> to
+                  avoid escalating iceberg risk.
+                </>
+              )}
             </p>
 
             <div className="flex flex-col gap-3">
