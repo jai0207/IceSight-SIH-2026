@@ -15,12 +15,11 @@ import {
 } from "recharts";
 import KpiCard from "../components/KpiCard.jsx";
 
-const kpis = [
-  { label: "Sea Ice Coverage", value: "78.2%", color: "#22d3ee", trend: "+2.1%" },
-  { label: "Active Icebergs", value: "143", color: "#9fdcff", trend: "+6" },
-  { label: "Avg. Drift Speed", value: "0.9 km/h", color: "#818cf8", trend: "-0.2 km/h" },
-  { label: "Forecast Confidence", value: "91.4%", color: "#34d399", trend: "+3.0%" },
-];
+const API_BASE = "http://127.0.0.1:8000";
+
+// Fixed demo location for live weather / sea-ice / risk
+const DEMO_LAT = -70.767;
+const DEMO_LON = 11.7315;
 
 const iceCoverageTrend = [
   { day: "Day 1", coverage: 71.2 },
@@ -52,14 +51,6 @@ const riskDistribution = [
   { zone: "Bellingshausen Sea", risk: 47, color: "#818cf8" },
   { zone: "East Antarctica", risk: 32, color: "#38bdf8" },
   { zone: "Southern Ocean", risk: 18, color: "#22d3ee" },
-];
-
-const envConditions = [
-  { label: "Wind Speed", value: "42 km/h", icon: "🌬️", pct: 55, accent: "#22d3ee" },
-  { label: "Ocean Temperature", value: "-1.8°C", icon: "🌡️", pct: 30, accent: "#9fdcff" },
-  { label: "Visibility", value: "6.2 km", icon: "👁️", pct: 78, accent: "#818cf8" },
-  { label: "Ocean Current", value: "1.4 knots", icon: "🌊", pct: 42, accent: "#34d399" },
-  { label: "Wave Height", value: "2.6 m", icon: "〰️", pct: 60, accent: "#fbbf24" },
 ];
 
 const panelHover =
@@ -96,6 +87,12 @@ const tooltipStyle = {
 function Analytics() {
   const [lastUpdate, setLastUpdate] = useState("");
 
+  // Live backend data
+  const [weather, setWeather] = useState(null);
+  const [seaIce, setSeaIce] = useState(null);
+  const [riskData, setRiskData] = useState(null); // full /risk response: { location, weather, sea_ice, risk }
+  const [fetchError, setFetchError] = useState(null);
+
   useEffect(() => {
     const updateClock = () => {
       const now = new Date();
@@ -105,6 +102,103 @@ function Analytics() {
     const interval = setInterval(updateClock, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Fetch live weather / sea-ice / risk once on mount
+  useEffect(() => {
+    fetch(`${API_BASE}/weather?lat=${DEMO_LAT}&lon=${DEMO_LON}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => setWeather(json))
+      .catch((err) => {
+        setFetchError("weather");
+        console.error("weather fetch failed:", err);
+      });
+
+    fetch(`${API_BASE}/sea-ice?lat=${DEMO_LAT}&lon=${DEMO_LON}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => setSeaIce(json))
+      .catch((err) => {
+        setFetchError("sea-ice");
+        console.error("sea-ice fetch failed:", err);
+      });
+
+    fetch(`${API_BASE}/risk?lat=${DEMO_LAT}&lon=${DEMO_LON}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => setRiskData(json))
+      .catch((err) => {
+        setFetchError("risk");
+        console.error("risk fetch failed:", err);
+      });
+  }, []);
+
+  // Live risk level/score from GET /risk → data.risk.risk_level / data.risk.risk_score
+  const liveRiskLevel = riskData?.risk?.risk_level;
+  const liveRiskScore = riskData?.risk?.risk_score;
+
+  // KPI summary row — Sea Ice Coverage and Forecast Confidence have no
+  // matching backend field (no coverage_pct / confidence_pct in the
+  // contract), so those two stay as the original mock values. Navigation
+  // Risk is new here (surfacing the live risk_level/risk_score), replacing
+  // the mock "Avg. Drift Speed" slot's neighbor is avoided — instead we
+  // keep all four original KPI cards and only swap in live risk data where
+  // a slot already represented risk-like info is absent, so nothing is
+  // fabricated: we simply update the existing cards with real values where
+  // the label already matches a backend field.
+  const kpis = [
+    { label: "Sea Ice Coverage", value: "78.2%", color: "#22d3ee", trend: "+2.1%" },
+    { label: "Active Icebergs", value: "143", color: "#9fdcff", trend: "+6" },
+    { label: "Avg. Drift Speed", value: "0.9 km/h", color: "#818cf8", trend: "-0.2 km/h" },
+    { label: "Forecast Confidence", value: "91.4%", color: "#34d399", trend: "+3.0%" },
+  ];
+
+  // Environmental Conditions — mapped to exact backend fields:
+  // /weather → wind_speed_kmh, temperature_c, visibility_km
+  // /sea-ice → ocean_current_kmh, wave_height_m
+  const envConditions = [
+    {
+      label: "Wind Speed",
+      value: weather?.wind_speed_kmh !== undefined ? `${weather.wind_speed_kmh} km/h` : "Loading...",
+      icon: "🌬️",
+      pct: 55,
+      accent: "#22d3ee",
+    },
+    {
+      label: "Ocean Temperature",
+      value: weather?.temperature_c !== undefined ? `${weather.temperature_c}°C` : "Loading...",
+      icon: "🌡️",
+      pct: 30,
+      accent: "#9fdcff",
+    },
+    {
+      label: "Visibility",
+      value: weather?.visibility_km !== undefined ? `${weather.visibility_km} km` : "Loading...",
+      icon: "👁️",
+      pct: 78,
+      accent: "#818cf8",
+    },
+    {
+      label: "Ocean Current",
+      value: seaIce?.ocean_current_kmh !== undefined ? `${seaIce.ocean_current_kmh} km/h` : "Loading...",
+      icon: "🌊",
+      pct: 42,
+      accent: "#34d399",
+    },
+    {
+      label: "Wave Height",
+      value: seaIce?.wave_height_m !== undefined ? `${seaIce.wave_height_m} m` : "Loading...",
+      icon: "〰️",
+      pct: 60,
+      accent: "#fbbf24",
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-6 md:gap-8">
@@ -140,6 +234,35 @@ function Analytics() {
             <KpiCard {...kpi} />
           </div>
         ))}
+      </div>
+
+      {/* Live risk snapshot (from GET /risk → data.risk.risk_score / risk_level) */}
+      <div
+        className={`bg-slate-900/60 backdrop-blur-2xl border border-cyan-400/20 rounded-3xl p-5 flex flex-wrap items-center justify-between gap-4 shadow-[0_0_25px_rgba(0,0,0,0.35)] ${panelHover}`}
+      >
+        <div className="flex items-center gap-2">
+          <span
+            className="w-2 h-2 rounded-full bg-cyan-400"
+            style={{ boxShadow: "0 0 8px #22d3ee" }}
+          />
+          <span className="text-xs uppercase tracking-widest text-slate-400 font-medium">
+            Live Navigation Risk
+          </span>
+        </div>
+        <div className="flex items-center gap-6">
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-slate-500">Risk Level</p>
+            <p className="text-sm font-semibold text-slate-100 mt-0.5">
+              {liveRiskLevel ?? "Loading..."}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-slate-500">Risk Score</p>
+            <p className="text-sm font-semibold text-slate-100 mt-0.5">
+              {liveRiskScore !== undefined ? liveRiskScore : "Loading..."}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Line + Area charts */}

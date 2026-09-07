@@ -1,22 +1,15 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import KpiCard from "../components/KpiCard.jsx";
 
-const kpis = [
-  { label: "Sea Ice Coverage", value: "78.2%", color: "#22d3ee", trend: "+2.1%" },
-  { label: "Active Icebergs", value: "143", color: "#9fdcff", trend: "+6" },
-  { label: "Navigation Risk", value: "HIGH", color: "#f87171", trend: "up" },
-  { label: "Estimated Fuel Savings", value: "18.4%", color: "#34d399", trend: "+1.3%" },
-];
+const API_BASE = "http://127.0.0.1:8000";
 
-const statusStrip = [
-  { label: "Wind Speed", value: "42 km/h" },
-  { label: "Visibility", value: "6.2 km" },
-  { label: "Ocean Temp", value: "-1.8°C" },
-  { label: "Ice Drift", value: "0.9 km/h" },
-];
+// Fixed demo location for live weather / sea-ice / risk
+const DEMO_LAT = -70.767;
+const DEMO_LON = 11.7315;
 
 const alerts = [
   {
@@ -82,8 +75,89 @@ function shipDotIcon() {
   });
 }
 
+/* Maps the backend's free-text risk_level ("Low" | "Moderate" | "High" | "Critical" | ...)
+   to a display color, matching the existing HIGH/red styling pattern. */
+function riskLevelColor(level) {
+  const normalized = (level || "").toString().toLowerCase();
+  if (normalized === "critical") return "#f87171";
+  if (normalized === "high") return "#fb923c";
+  if (normalized === "moderate" || normalized === "medium") return "#fbbf24";
+  if (normalized === "low") return "#34d399";
+  return "#f87171";
+}
+
 function Dashboard() {
   const navigate = useNavigate();
+
+  // Live backend data
+  const [weather, setWeather] = useState(null);
+  const [seaIce, setSeaIce] = useState(null);
+  const [riskData, setRiskData] = useState(null); // full /risk response: { location, weather, sea_ice, risk }
+
+  useEffect(() => {
+    fetch(`${API_BASE}/weather?lat=${DEMO_LAT}&lon=${DEMO_LON}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => setWeather(json))
+      .catch((err) => console.error("weather fetch failed:", err));
+
+    fetch(`${API_BASE}/sea-ice?lat=${DEMO_LAT}&lon=${DEMO_LON}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => setSeaIce(json))
+      .catch((err) => console.error("sea-ice fetch failed:", err));
+
+    fetch(`${API_BASE}/risk?lat=${DEMO_LAT}&lon=${DEMO_LON}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => setRiskData(json))
+      .catch((err) => console.error("risk fetch failed:", err));
+  }, []);
+
+  // Live risk level/score from GET /risk → data.risk.risk_level / data.risk.risk_score
+  const liveRiskLevel = riskData?.risk?.risk_level;
+  const liveRiskScore = riskData?.risk?.risk_score;
+  const liveRiskColor = riskLevelColor(liveRiskLevel);
+
+  const kpis = [
+    { label: "Sea Ice Coverage", value: "78.2%", color: "#22d3ee", trend: "+2.1%" },
+    { label: "Active Icebergs", value: "143", color: "#9fdcff", trend: "+6" },
+    {
+      label: "Navigation Risk",
+      value: liveRiskLevel ?? "Loading...",
+      color: liveRiskColor,
+      trend: liveRiskScore !== undefined ? `Score: ${liveRiskScore}` : "—",
+    },
+    { label: "Estimated Fuel Savings", value: "18.4%", color: "#34d399", trend: "+1.3%" },
+  ];
+
+  // Mission status strip — mapped to exact backend fields:
+  // /weather → wind_speed_kmh, visibility_km, temperature_c
+  // /sea-ice → ocean_current_kmh (used for Ice Drift, the closest matching field)
+  const statusStrip = [
+    {
+      label: "Wind Speed",
+      value: weather?.wind_speed_kmh !== undefined ? `${weather.wind_speed_kmh} km/h` : "Loading...",
+    },
+    {
+      label: "Visibility",
+      value: weather?.visibility_km !== undefined ? `${weather.visibility_km} km` : "Loading...",
+    },
+    {
+      label: "Ocean Temp",
+      value: weather?.temperature_c !== undefined ? `${weather.temperature_c}°C` : "Loading...",
+    },
+    {
+      label: "Ice Drift",
+      value: seaIce?.ocean_current_kmh !== undefined ? `${seaIce.ocean_current_kmh} km/h` : "Loading...",
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-6 md:gap-8">
@@ -106,7 +180,9 @@ function Dashboard() {
           </div>
           <div>
             <p className="text-xs uppercase tracking-widest text-slate-500">Risk Level</p>
-            <p className="mt-1 text-lg font-semibold text-red-400">HIGH</p>
+            <p className="mt-1 text-lg font-semibold" style={{ color: liveRiskColor }}>
+              {liveRiskLevel ?? "Loading..."}
+            </p>
           </div>
           <div>
             <p className="text-xs uppercase tracking-widest text-slate-500">Forecast Window</p>

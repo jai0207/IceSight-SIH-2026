@@ -13,31 +13,20 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 /* ---------------------------------------------------------
-   Mock data
+   Backend config
 --------------------------------------------------------- */
 
-const ICEBERGS = [
-  { id: "IS-101", lat: -76.8, lon: -168.2, size: "Large", drift: "1.2 km/h", risk: 88, dir: "North-East", lane: "4.1 km", lastObs: "07:12 UTC", collision: 62 },
-  { id: "IS-102", lat: -75.9, lon: -173.5, size: "Medium", drift: "0.8 km/h", risk: 62, dir: "North", lane: "9.8 km", lastObs: "07:08 UTC", collision: 34 },
-  { id: "IS-103", lat: -74.6, lon: -161.4, size: "Small", drift: "1.6 km/h", risk: 34, dir: "North-West", lane: "18.2 km", lastObs: "06:55 UTC", collision: 12 },
-  { id: "IS-104", lat: -77.4, lon: -178.9, size: "Large", drift: "0.5 km/h", risk: 91, dir: "East", lane: "2.3 km", lastObs: "07:15 UTC", collision: 71 },
-  { id: "IS-105", lat: -73.1, lon: -55.7, size: "Medium", drift: "1.1 km/h", risk: 57, dir: "South-East", lane: "12.6 km", lastObs: "06:47 UTC", collision: 28 },
-  { id: "IS-106", lat: -71.8, lon: -48.2, size: "Small", drift: "2.0 km/h", risk: 21, dir: "North", lane: "27.4 km", lastObs: "06:30 UTC", collision: 6 },
-  { id: "IS-107", lat: -74.2, lon: -41.6, size: "Large", drift: "0.9 km/h", risk: 79, dir: "North-East", lane: "6.7 km", lastObs: "07:02 UTC", collision: 48 },
-  { id: "IS-108", lat: -72.5, lon: -35.9, size: "Medium", drift: "1.3 km/h", risk: 45, dir: "East", lane: "15.1 km", lastObs: "06:41 UTC", collision: 19 },
-  { id: "IS-109", lat: -73.9, lon: -103.7, size: "Large", drift: "0.7 km/h", risk: 83, dir: "North", lane: "3.9 km", lastObs: "07:10 UTC", collision: 55 },
-  { id: "IS-110", lat: -72.3, lon: -112.4, size: "Small", drift: "1.8 km/h", risk: 29, dir: "North-West", lane: "22.0 km", lastObs: "06:35 UTC", collision: 9 },
-  { id: "IS-111", lat: -71.0, lon: -95.8, size: "Medium", drift: "1.0 km/h", risk: 51, dir: "South-East", lane: "11.3 km", lastObs: "06:52 UTC", collision: 24 },
-  { id: "IS-112", lat: -70.4, lon: -82.6, size: "Small", drift: "1.5 km/h", risk: 18, dir: "North", lane: "31.5 km", lastObs: "06:20 UTC", collision: 4 },
-  { id: "IS-113", lat: -69.6, lon: -88.9, size: "Large", drift: "0.6 km/h", risk: 74, dir: "East", lane: "7.2 km", lastObs: "06:58 UTC", collision: 41 },
-  { id: "IS-114", lat: -66.3, lon: 62.1, size: "Medium", drift: "1.2 km/h", risk: 48, dir: "South", lane: "14.0 km", lastObs: "06:44 UTC", collision: 21 },
-  { id: "IS-115", lat: -64.8, lon: 74.5, size: "Small", drift: "1.9 km/h", risk: 26, dir: "South-West", lane: "25.6 km", lastObs: "06:25 UTC", collision: 7 },
-  { id: "IS-116", lat: -67.1, lon: 88.3, size: "Large", drift: "0.8 km/h", risk: 86, dir: "North", lane: "4.4 km", lastObs: "07:14 UTC", collision: 59 },
-  { id: "IS-117", lat: -65.5, lon: 97.6, size: "Medium", drift: "1.1 km/h", risk: 55, dir: "North-East", lane: "10.9 km", lastObs: "06:48 UTC", collision: 26 },
-  { id: "IS-118", lat: -60.2, lon: -30.4, size: "Small", drift: "2.2 km/h", risk: 15, dir: "North", lane: "38.7 km", lastObs: "06:10 UTC", collision: 3 },
-  { id: "IS-119", lat: -58.9, lon: -10.7, size: "Medium", drift: "1.4 km/h", risk: 40, dir: "North-East", lane: "17.8 km", lastObs: "06:38 UTC", collision: 16 },
-  { id: "IS-120", lat: -62.4, lon: 5.3, size: "Large", drift: "0.9 km/h", risk: 68, dir: "East", lane: "8.5 km", lastObs: "06:53 UTC", collision: 37 },
-];
+const API_BASE = "http://127.0.0.1:8000";
+
+// Fixed demo location for iceberg map requests
+const ICEBERG_LAT = -75.250973;
+const ICEBERG_LON = -0.071389;
+const ICEBERGS_ENDPOINT = `${API_BASE}/icebergs?lat=${ICEBERG_LAT}&lon=${ICEBERG_LON}`;
+
+/* ---------------------------------------------------------
+   Static mock data (ship + routes + overlays stay local —
+   no backend endpoint covers these)
+--------------------------------------------------------- */
 
 const SHIP = {
   name: "RV Polar Star",
@@ -115,6 +104,19 @@ function riskLabel(risk) {
   return "Safe";
 }
 
+/* Backend risk is a free-text label ("HIGH", "Moderate", etc.), but the
+   existing marker/popup styling (riskColor/riskLabel/icebergIcon) is built
+   around a 0–100 numeric score. This maps the label to a representative
+   score so the existing color/label logic keeps working unchanged. */
+function backendRiskToScore(risk) {
+  const normalized = (risk || "").toString().toLowerCase();
+  if (normalized === "critical") return 90;
+  if (normalized === "high") return 65;
+  if (normalized === "moderate" || normalized === "medium") return 40;
+  if (normalized === "low" || normalized === "safe") return 15;
+  return 15;
+}
+
 function icebergIcon(risk) {
   const color = riskColor(risk);
   return L.divIcon({
@@ -184,6 +186,18 @@ function FitOnMount() {
   return null;
 }
 
+/* Normalizes the /icebergs response into an array of iceberg objects,
+   regardless of whether the backend returns a wrapper { count, icebergs },
+   a plain array, or a single object. */
+function normalizeIcebergResponse(data) {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.icebergs)) return data.icebergs;
+  if (data && typeof data === "object" && ("latitude" in data || "id" in data)) {
+    return [data];
+  }
+  return [];
+}
+
 /* ---------------------------------------------------------
    Component
 --------------------------------------------------------- */
@@ -192,6 +206,10 @@ function MapPage() {
   const [utcTime, setUtcTime] = useState("");
   const [mounted, setMounted] = useState(false);
   const [overlay, setOverlay] = useState("icebergs");
+
+  const [icebergs, setIcebergs] = useState([]);
+  const [loadingIcebergs, setLoadingIcebergs] = useState(true);
+  const [icebergError, setIcebergError] = useState(null);
 
   useEffect(() => {
     const tick = () => setUtcTime(new Date().toISOString().slice(11, 19) + " UTC");
@@ -205,15 +223,35 @@ function MapPage() {
     return () => cancelAnimationFrame(id);
   }, []);
 
+  // Fetch live iceberg data once on mount
+  useEffect(() => {
+    setLoadingIcebergs(true);
+    setIcebergError(null);
+    fetch(ICEBERGS_ENDPOINT)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => setIcebergs(normalizeIcebergResponse(json)))
+      .catch((err) => {
+        setIcebergError(err.message || "Unable to reach satellite feed.");
+        console.error("icebergs fetch failed:", err);
+      })
+      .finally(() => setLoadingIcebergs(false));
+  }, []);
+
   const stats = useMemo(() => {
-    const highRisk = ICEBERGS.filter((i) => i.risk > 75).length;
+    const highRisk = icebergs.filter((i) => {
+      const score = backendRiskToScore(i.risk);
+      return score > 50;
+    }).length;
     return {
-      active: ICEBERGS.length,
+      active: icebergs.length,
       highRisk,
       routeStatus: "Safe Route Active",
       timeSaved: "4.2 hrs",
     };
-  }, []);
+  }, [icebergs]);
 
   const fade = (delay = "") =>
     `transition-all duration-700 motion-reduce:transition-none ease-out ${delay} ${
@@ -342,6 +380,15 @@ function MapPage() {
         .leaflet-control-attribution a {
           color: #93a4bd !important;
         }
+        @media (prefers-reduced-motion: no-preference) {
+          .icesight-refresh-spin {
+            animation: icesight-spin 0.9s linear infinite;
+          }
+        }
+        @keyframes icesight-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
       `}</style>
 
       {/* Header */}
@@ -381,6 +428,36 @@ function MapPage() {
         {/* Map */}
         <div className={`lg:col-span-7 ${fade("delay-100")}`}>
           <div className="relative rounded-3xl overflow-hidden border border-cyan-400/20 shadow-[0_0_35px_rgba(0,0,0,0.4)] h-[480px] md:h-[640px]">
+            {/* Loading state */}
+            {loadingIcebergs && (
+              <div className="absolute inset-0 z-[1200] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-4 bg-slate-900/70 border border-cyan-400/30 rounded-3xl px-8 py-8 shadow-[0_0_35px_rgba(34,211,238,0.25)]">
+                  <span className="relative flex h-10 w-10">
+                    <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-40" />
+                    <span className="relative inline-flex rounded-full h-10 w-10 bg-cyan-400/20 border border-cyan-400/60 items-center justify-center">
+                      <span className="text-lg">🛰️</span>
+                    </span>
+                  </span>
+                  <p className="text-sm text-cyan-200 font-medium tracking-wide text-center">
+                    Connecting to IceSight Satellite Feed...
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Error state */}
+            {!loadingIcebergs && icebergError && (
+              <div className="absolute inset-0 z-[1200] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-6">
+                <div className="flex flex-col items-center gap-3 bg-slate-900/80 border border-red-400/30 rounded-3xl px-8 py-8 shadow-[0_0_30px_rgba(248,113,113,0.2)] text-center max-w-sm">
+                  <span className="text-2xl">📡</span>
+                  <p className="text-sm text-red-300 font-semibold">
+                    Satellite feed unavailable.
+                  </p>
+                  <p className="text-xs text-slate-400">{icebergError}</p>
+                </div>
+              </div>
+            )}
+
             {/* Overlay toggle control */}
             <div className="absolute top-4 right-4 z-[1000] bg-slate-900/85 backdrop-blur-xl border border-cyan-400/20 rounded-2xl p-1.5 flex gap-1 shadow-[0_0_20px_rgba(0,0,0,0.4)] transition-all duration-300 hover:border-cyan-400/50">
               {overlayBtns.map((btn) => (
@@ -472,58 +549,65 @@ function MapPage() {
                   />
                 ))}
 
-              {/* Iceberg markers */}
+              {/* Iceberg markers — from GET /icebergs */}
               {overlay === "icebergs" &&
-                ICEBERGS.map((iceberg) => (
-                  <Marker
-                    key={iceberg.id}
-                    position={[iceberg.lat, iceberg.lon]}
-                    icon={icebergIcon(iceberg.risk)}
-                  >
-                    <Popup className="icesight-popup" autoPan={true}>
-                      <div
-                        className="min-w-[220px] font-sans rounded-xl p-1"
-                        style={{
-                          borderLeft: `3px solid ${riskColor(iceberg.risk)}`,
-                          paddingLeft: "10px",
-                        }}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <p
-                            className="text-sm font-bold text-cyan-300"
-                            style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-                          >
-                            {iceberg.id}
-                          </p>
-                          <span
-                            className="px-2 py-0.5 rounded-full text-[10px] font-bold"
-                            style={{
-                              color: riskColor(iceberg.risk),
-                              backgroundColor: `${riskColor(iceberg.risk)}22`,
-                              border: `1px solid ${riskColor(iceberg.risk)}55`,
-                              boxShadow: `0 0 8px ${riskColor(iceberg.risk)}55`,
-                            }}
-                          >
-                            {iceberg.risk} · {riskLabel(iceberg.risk)}
-                          </span>
-                        </div>
-                        <div className="flex flex-col gap-1 text-xs text-slate-300">
-                          <span>Size: {iceberg.size}</span>
-                          <span>Drift Speed: {iceberg.drift}</span>
-                          <span>Est. Drift Direction: {iceberg.dir}</span>
-                          <span>Distance from Lane: {iceberg.lane}</span>
-                          <span>Last Observation: {iceberg.lastObs}</span>
-                          <span>
-                            AI Collision Probability:{" "}
-                            <span className="font-semibold text-slate-100">
-                              {iceberg.collision}%
+                !loadingIcebergs &&
+                !icebergError &&
+                icebergs.map((iceberg, idx) => {
+                  const score = backendRiskToScore(iceberg.risk);
+                  const lat = iceberg.latitude;
+                  const lon = iceberg.longitude;
+                  const id = iceberg.id || iceberg.name || `Iceberg-${idx}`;
+                  if (lat === undefined || lon === undefined) return null;
+                  return (
+                    <Marker
+                      key={id}
+                      position={[lat, lon]}
+                      icon={icebergIcon(score)}
+                    >
+                      <Popup className="icesight-popup" autoPan={true}>
+                        <div
+                          className="min-w-[220px] font-sans rounded-xl p-1"
+                          style={{
+                            borderLeft: `3px solid ${riskColor(score)}`,
+                            paddingLeft: "10px",
+                          }}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <p
+                              className="text-sm font-bold text-cyan-300"
+                              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                            >
+                              {id}
+                            </p>
+                            <span
+                              className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                              style={{
+                                color: riskColor(score),
+                                backgroundColor: `${riskColor(score)}22`,
+                                border: `1px solid ${riskColor(score)}55`,
+                                boxShadow: `0 0 8px ${riskColor(score)}55`,
+                              }}
+                            >
+                              {iceberg.risk ?? riskLabel(score)}
                             </span>
-                          </span>
+                          </div>
+                          <div className="flex flex-col gap-1 text-xs text-slate-300">
+                            <span>Size: {iceberg.size ?? "—"}</span>
+                            <span>
+                              Drift Speed:{" "}
+                              {iceberg.drift_speed !== undefined ? `${iceberg.drift_speed} km/h` : "—"}
+                            </span>
+                            <span>
+                              Distance from Lane:{" "}
+                              {iceberg.distance_km !== undefined ? `${iceberg.distance_km} km` : "—"}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    </Popup>
-                  </Marker>
-                ))}
+                      </Popup>
+                    </Marker>
+                  );
+                })}
 
               {/* Ship marker (always visible) */}
               <Marker position={[SHIP.lat, SHIP.lon]} icon={shipIcon()}>
@@ -613,7 +697,7 @@ function MapPage() {
               className="mt-2 text-3xl font-bold text-cyan-300"
               style={{ fontFamily: "'Space Grotesk', sans-serif" }}
             >
-              {stats.active}
+              {loadingIcebergs ? "—" : stats.active}
             </p>
           </div>
 
@@ -625,7 +709,7 @@ function MapPage() {
               className="mt-2 text-3xl font-bold text-red-400"
               style={{ fontFamily: "'Space Grotesk', sans-serif" }}
             >
-              {stats.highRisk}
+              {loadingIcebergs ? "—" : stats.highRisk}
             </p>
           </div>
 

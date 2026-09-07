@@ -1,6 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 
 /* ---------------------------------------------------------
+   Backend config
+--------------------------------------------------------- */
+
+const API_BASE = "http://127.0.0.1:8000";
+
+// Fixed demo location used for weather / risk / sea-ice / AI prediction
+const DEMO_LAT = -70.767;
+const DEMO_LON = 11.7315;
+
+// Route recommendation endpoints
+const ORIGIN_LAT = -70.767;
+const ORIGIN_LON = 11.7315;
+const DEST_LAT = -75.250973;
+const DEST_LON = -0.071389;
+
+/* ---------------------------------------------------------
    Mock data — keyed by region
 --------------------------------------------------------- */
 
@@ -110,6 +126,16 @@ function riskLabel(risk) {
   return "Low";
 }
 
+/* Color mapping for the backend's free-text risk_level (e.g. "Moderate") */
+function liveRiskColor(level) {
+  const normalized = (level || "").toString().toLowerCase();
+  if (normalized === "critical") return "#f87171";
+  if (normalized === "high") return "#fb923c";
+  if (normalized === "moderate" || normalized === "medium") return "#fbbf24";
+  if (normalized === "low") return "#34d399";
+  return null;
+}
+
 /* AI detection overlay positions on the "current pass" image (percentages) */
 const DETECTION_OVERLAYS = [
   { label: "IS-204", top: "22%", left: "28%", tone: "cyan" },
@@ -129,6 +155,17 @@ function MissionIntel() {
   const [mounted, setMounted] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [counters, setCounters] = useState({ detected: 0, fractures: 0, confidence: 0 });
+
+  // Live backend data
+  const [weather, setWeather] = useState(null);
+  const [seaIce, setSeaIce] = useState(null);
+  const [riskData, setRiskData] = useState(null); // full /risk response: { location, weather, sea_ice, risk }
+  const [aiPrediction, setAiPrediction] = useState(null);
+  const [aiLoading, setAiLoading] = useState(true);
+  const [aiError, setAiError] = useState(null);
+  const [routeRecommendation, setRouteRecommendation] = useState(null);
+  const [routeLoading, setRouteLoading] = useState(true);
+  const [routeError, setRouteError] = useState(null);
 
   const data = useMemo(() => REGION_DATA[region], [region]);
 
@@ -165,6 +202,74 @@ function MissionIntel() {
     return () => clearInterval(interval);
   }, [data]);
 
+  // Fetch live weather / sea-ice / risk once on mount
+  useEffect(() => {
+    fetch(`${API_BASE}/weather?lat=${DEMO_LAT}&lon=${DEMO_LON}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => setWeather(json))
+      .catch((err) => console.error("weather fetch failed:", err));
+
+    fetch(`${API_BASE}/sea-ice?lat=${DEMO_LAT}&lon=${DEMO_LON}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => setSeaIce(json))
+      .catch((err) => console.error("sea-ice fetch failed:", err));
+
+    fetch(`${API_BASE}/risk?lat=${DEMO_LAT}&lon=${DEMO_LON}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => setRiskData(json))
+      .catch((err) => console.error("risk fetch failed:", err));
+  }, []);
+
+  // Fetch live AI prediction once on mount
+  useEffect(() => {
+    setAiLoading(true);
+    setAiError(null);
+    fetch(`${API_BASE}/ai/predict?lat=${DEMO_LAT}&lon=${DEMO_LON}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => setAiPrediction(json.ai_prediction))
+      .catch((err) => {
+        setAiError(err.message || "AI prediction unavailable.");
+        console.error("ai/predict fetch failed:", err);
+      })
+      .finally(() => setAiLoading(false));
+  }, []);
+
+  // Fetch live route recommendation once on mount
+  useEffect(() => {
+    setRouteLoading(true);
+    setRouteError(null);
+    const params = new URLSearchParams({
+      origin_lat: String(ORIGIN_LAT),
+      origin_lon: String(ORIGIN_LON),
+      dest_lat: String(DEST_LAT),
+      dest_lon: String(DEST_LON),
+    }).toString();
+
+    fetch(`${API_BASE}/route/recommend?${params}`, { method: "POST" })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => setRouteRecommendation(json.recommendation))
+      .catch((err) => {
+        setRouteError(err.message || "Route recommendation unavailable.");
+        console.error("route/recommend fetch failed:", err);
+      })
+      .finally(() => setRouteLoading(false));
+  }, []);
+
   const fade = (delay = "") =>
     `transition-all duration-700 motion-reduce:transition-none ease-out ${delay} ${
       mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
@@ -174,6 +279,51 @@ function MissionIntel() {
     "transition-all duration-300 motion-reduce:transition-none hover:-translate-y-1 motion-reduce:hover:translate-y-0 hover:border-cyan-400/50 hover:shadow-[0_0_30px_rgba(34,211,238,0.25)]";
 
   const toggleExpand = (id) => setExpandedId((prev) => (prev === id ? null : id));
+
+  // Live risk level/score from GET /risk → data.risk.risk_level / data.risk.risk_score
+  const liveRiskLevel = riskData?.risk?.risk_level;
+  const liveRiskScore = riskData?.risk?.risk_score;
+
+  // Environmental snapshot: overlay live weather/sea-ice values onto the
+  // region's mock card list (icon/trend/accent stay as designed; only the
+  // value updates when a matching backend field exists).
+  const envDisplay = useMemo(() => {
+    return data.env.map((item) => {
+      let value = item.value;
+      if (item.label === "Wind" && weather?.wind_speed_kmh !== undefined) {
+        value = `${weather.wind_speed_kmh} km/h`;
+      } else if (item.label === "Ocean Temp" && weather?.temperature_c !== undefined) {
+        value = `${weather.temperature_c}°C`;
+      } else if (item.label === "Visibility" && weather?.visibility_km !== undefined) {
+        value = `${weather.visibility_km} km`;
+      } else if (item.label === "Wave Height" && seaIce?.wave_height_m !== undefined) {
+        value = `${seaIce.wave_height_m} m`;
+      } else if (item.label === "Ocean Current" && seaIce?.ocean_current_kmh !== undefined) {
+        value = `${seaIce.ocean_current_kmh} km/h`;
+      }
+      // "Ice Drift" has no backend equivalent — keep the mock value.
+      return { ...item, value };
+    });
+  }, [data, weather, seaIce]);
+
+  // AI detection summary cards — Navigation Risk uses the live /risk value
+  // when available, otherwise falls back to the region's mock risk.
+  const detectionSummary = [
+    { label: "Icebergs Detected", value: counters.detected, accent: "#22d3ee" },
+    { label: "New Ice Fractures", value: counters.fractures, accent: "#fbbf24" },
+    {
+      label: "Navigation Risk",
+      value: liveRiskLevel ?? data.risk,
+      accent: liveRiskColor(liveRiskLevel) ?? data.riskColor,
+    },
+    { label: "Model Confidence", value: `${counters.confidence}%`, accent: "#34d399" },
+  ];
+
+  // Recommended Action list — live route recommendation is surfaced first
+  // when available, followed by the region's existing mock action items.
+  const actions = routeRecommendation
+    ? [routeRecommendation, ...data.briefing.actions]
+    : data.briefing.actions;
 
   return (
     <div className="flex flex-col gap-6 md:gap-8">
@@ -467,12 +617,7 @@ function MissionIntel() {
 
       {/* AI detection summary */}
       <div className={`grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 ${fade("delay-200")}`}>
-        {[
-          { label: "Icebergs Detected", value: counters.detected, accent: "#22d3ee" },
-          { label: "New Ice Fractures", value: counters.fractures, accent: "#fbbf24" },
-          { label: "Navigation Risk", value: data.risk, accent: data.riskColor },
-          { label: "Model Confidence", value: `${counters.confidence}%`, accent: "#34d399" },
-        ].map((card) => (
+        {detectionSummary.map((card) => (
           <div
             key={card.label}
             className={`bg-slate-900/60 backdrop-blur-2xl border border-cyan-400/20 rounded-3xl p-5 flex flex-col gap-2 shadow-[0_0_25px_rgba(0,0,0,0.35)] ${panelHover}`}
@@ -492,6 +637,9 @@ function MissionIntel() {
             >
               {card.value}
             </p>
+            {card.label === "Navigation Risk" && liveRiskScore !== undefined && (
+              <p className="text-[10px] text-slate-500">Live risk score: {liveRiskScore}</p>
+            )}
           </div>
         ))}
       </div>
@@ -598,6 +746,20 @@ function MissionIntel() {
           <span className="text-xs uppercase tracking-widest text-cyan-300 font-medium">
             AI Mission Briefing
           </span>
+          {(aiLoading || routeLoading) && (
+            <span className="text-[10px] text-slate-500">syncing live AI data…</span>
+          )}
+          {!aiLoading && !routeLoading && (aiPrediction || routeRecommendation) && (
+            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold text-cyan-300 bg-cyan-400/10 border border-cyan-400/30">
+              LIVE
+            </span>
+          )}
+          {!aiLoading && aiError && (
+            <span className="text-[10px] text-red-400">AI prediction unavailable</span>
+          )}
+          {!routeLoading && routeError && (
+            <span className="text-[10px] text-red-400">route data unavailable</span>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -606,12 +768,18 @@ function MissionIntel() {
               Situation
             </p>
             <p className="text-sm text-slate-300 leading-relaxed">{data.briefing.situation}</p>
+            {aiPrediction && (
+              <p className="text-sm text-cyan-200 leading-relaxed mt-2">
+                <span className="text-cyan-400 font-semibold">Live AI Assessment: </span>
+                {aiPrediction}
+              </p>
+            )}
 
             <p className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold mt-4 mb-2">
               Recommended Action
             </p>
             <ul className="flex flex-col gap-1.5">
-              {data.briefing.actions.map((a, i) => (
+              {actions.map((a, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
                   <span className="text-cyan-400 mt-0.5">▹</span>
                   {a}
@@ -663,7 +831,7 @@ function MissionIntel() {
           Environmental Snapshot
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {data.env.map((item) => (
+          {envDisplay.map((item) => (
             <div
               key={item.label}
               className={`bg-slate-900/60 backdrop-blur-2xl border border-cyan-400/20 rounded-2xl p-4 flex flex-col gap-2 shadow-[0_0_20px_rgba(0,0,0,0.3)] ${panelHover}`}
